@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import LangToggle from "@/components/LangToggle";
+import StaffLogin from "@/components/StaffLogin";
 import { AuthError } from "@/lib/api";
 import { listCafes, type AdminCafe } from "@/lib/adminApi";
-import { setAdminToken, useAdminToken } from "@/lib/adminToken";
 import type { Key } from "@/lib/i18n";
+import { setStaffToken, useStaffToken } from "@/lib/staffToken";
 import { useLang } from "@/lib/useLang";
-import AdminLogin from "./AdminLogin";
 import styles from "./admin.module.css";
 
 type AdminContextValue = {
@@ -41,14 +41,14 @@ const NAV: { href: string; label: Key }[] = [
 
 /** /admin: the login form, then the ink sidebar with the Café picker around each admin page. */
 export default function AdminShell({ children }: { children: ReactNode }) {
-  const token = useAdminToken();
+  const token = useStaffToken("admin");
   if (token === undefined) return null; // server render: the token lives in the browser
-  return token ? <AdminFrame token={token}>{children}</AdminFrame> : <AdminLogin />;
+  return token ? <AdminFrame token={token}>{children}</AdminFrame> : <StaffLogin role="admin" styles={styles} />;
 }
 
 function handleAuthError(e: unknown) {
   if (!(e instanceof AuthError)) return false;
-  setAdminToken(null);
+  setStaffToken("admin", null);
   return true;
 }
 
@@ -98,7 +98,7 @@ function AdminFrame({ token, children }: { token: string; children: ReactNode })
         ))}
         <div className={styles.sideFoot}>
           <LangToggle />
-          <button className={styles.logout} onClick={() => setAdminToken(null)}>
+          <button className={styles.logout} onClick={() => setStaffToken("admin", null)}>
             {t("admin.logout")}
           </button>
         </div>

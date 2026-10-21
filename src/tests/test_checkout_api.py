@@ -1,6 +1,13 @@
+import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
+from app import orders
+from app.main import app
 from app.models import Cafe, Category, Product
+from app.payments import PaymentResult, get_payment_provider
 
 
 @pytest.fixture
@@ -85,6 +92,68 @@ def test_a_paid_order_cannot_be_paid_again(client, menu):
     again = client.post(f"/api/orders/{uuid}/pay", json={"method": "mada", "source": "ok"})
 
     assert again.status_code == 409
+
+
+class CountingProvider:
+    """Succeeds slowly and counts its charges, so two pays overlap."""
+
+    def __init__(self):
+        self.charges = 0
+
+    def charge(self, amount, method, source):
+        self.charges += 1
+        time.sleep(0.3)
+        return PaymentResult(ok=True, reference=f"ref_{self.charges}")
+
+
+@pytest.fixture
+def provider():
+    p = CountingProvider()
+    app.dependency_overrides[get_payment_provider] = lambda: p
+    yield p
+    app.dependency_overrides.pop(get_payment_provider)
+
+
+def test_two_concurrent_pays_charge_once(client, menu, provider):
+    uuid = client.post("/api/cafes/demo-roasters/orders", json=_table_order(menu)).json()["id"]
+
+    def pay(_):
+        return client.post(f"/api/orders/{uuid}/pay", json={"method": "mada", "source": "ok"}).status_code
+
+    with ThreadPoolExecutor(2) as pool:
+        codes = sorted(pool.map(pay, range(2)))
+
+    assert provider.charges == 1
+    assert codes == [200, 409]
+
+
+def test_a_failure_after_the_charge_is_logged_with_the_reference(client, menu, provider, monkeypatch, caplog):
+    uuid = client.post("/api/cafes/demo-roasters/orders", json=_table_order(menu)).json()["id"]
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(orders, "mark_paid", broken)
+    with caplog.at_level(logging.ERROR, logger="app.orders"), pytest.raises(RuntimeError):
+        client.post(f"/api/orders/{uuid}/pay", json={"method": "mada", "source": "ok"})
+
+    assert any(uuid in r.getMessage() and "ref_1" in r.getMessage() for r in caplog.records)
+
+
+def test_unavailable_products_are_named_in_the_detail(client, menu):
+    lines = [
+        {"product_id": menu["cortado"], "qty": 1},
+        {"product_id": menu["cold_brew"], "qty": 1},
+        {"product_id": menu["foreign"], "qty": 1},
+    ]
+
+    res = client.post("/api/cafes/demo-roasters/orders", json=_table_order(menu, lines=lines))
+
+    assert res.status_code == 422
+    assert res.json()["detail"] == {
+        "code": "products_unavailable",
+        "product_ids": sorted([menu["cold_brew"], menu["foreign"]]),
+    }
 
 
 def test_car_pickup_order(client, menu):

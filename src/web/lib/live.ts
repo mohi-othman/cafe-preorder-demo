@@ -10,18 +10,29 @@ export function wsUrl(path: string): string {
 }
 
 const MAX_BACKOFF_MS = 15000;
+const UNAUTHORIZED = 4401; // the API's close code for a bad or expired token
 
 /**
  * Keep a WebSocket open to `path` (no socket while it is null), reconnecting with backoff after drops.
- * `onOpen` runs on every (re)connect, so the caller can reload current state; `onClose` on every drop.
+ * With a `token`, it is sent as the first message (never in the URL).
+ * `onOpen` runs once the API says the socket is subscribed, on every (re)connect, so the caller can reload
+ * current state; `onClose` on every drop. On a 4401 close `onUnauthorized` runs and there is no reconnect.
  */
 export function useLiveSocket(
   path: string | null,
-  handlers: { onEvent: (e: LiveEvent) => void; onOpen?: () => void; onClose?: () => void },
+  handlers: {
+    token?: string;
+    onEvent: (e: LiveEvent) => void;
+    onOpen?: () => void;
+    onClose?: () => void;
+    onUnauthorized?: () => void;
+  },
 ) {
+  const { token } = handlers;
   const onEvent = useEffectEvent(handlers.onEvent);
   const onOpen = useEffectEvent(() => handlers.onOpen?.());
   const onClose = useEffectEvent(() => handlers.onClose?.());
+  const onUnauthorized = useEffectEvent(() => handlers.onUnauthorized?.());
 
   useEffect(() => {
     if (!path) return;
@@ -33,16 +44,29 @@ export function useLiveSocket(
     function connect() {
       socket = new WebSocket(wsUrl(path!));
       socket.onopen = () => {
-        backoff = 1000;
-        onOpen();
+        if (token) socket?.send(JSON.stringify({ token }));
       };
       socket.onmessage = (m) => {
+        let message: { type?: string };
         try {
-          onEvent(JSON.parse(m.data) as LiveEvent);
-        } catch {}
+          message = JSON.parse(m.data);
+        } catch {
+          return;
+        }
+        if (message.type === "ready") {
+          backoff = 1000;
+          onOpen();
+        } else {
+          onEvent(message as LiveEvent);
+        }
       };
-      socket.onclose = () => {
+      socket.onclose = (e) => {
         if (stopped) return;
+        if (e.code === UNAUTHORIZED) {
+          stopped = true;
+          onUnauthorized();
+          return;
+        }
         onClose();
         retry = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
@@ -55,5 +79,5 @@ export function useLiveSocket(
       clearTimeout(retry);
       socket?.close();
     };
-  }, [path]);
+  }, [path, token]);
 }

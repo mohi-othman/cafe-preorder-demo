@@ -6,18 +6,18 @@ import {
   advanceOrder,
   AuthError,
   getBoard,
+  KDS_STATUSES,
   type Board,
   type KdsOrder,
-  type KdsStatus,
   type Order,
 } from "@/lib/api";
-import { setKdsToken } from "@/lib/kdsToken";
 import { type LiveEvent, useLiveSocket } from "@/lib/live";
+import { setStaffToken } from "@/lib/staffToken";
 import { useLang } from "@/lib/useLang";
 import { playChime, unlockAudio } from "./chime";
 import styles from "./kds.module.css";
 
-const STATUSES: KdsStatus[] = ["pending", "preparing", "ready"];
+const logout = () => setStaffToken("barista", null);
 const FLASH_MS = 2500;
 
 /** The KDS board: oldest new Order in focus on the start side, the queue on the end side. */
@@ -37,7 +37,7 @@ export default function KdsBoard({ token }: { token: string }) {
       setBoard(await getBoard(token));
       setOffline(false);
     } catch (e) {
-      if (e instanceof AuthError) setKdsToken(null);
+      if (e instanceof AuthError) logout();
       else setOffline(true);
     }
   }, [token]);
@@ -56,10 +56,13 @@ export default function KdsBoard({ token }: { token: string }) {
   }
 
   // Live updates once the shift has started; every (re)connect reloads the board.
-  useLiveSocket(started ? `/api/ws/kds?token=${encodeURIComponent(token)}` : null, {
+  useLiveSocket(started ? "/api/ws/kds" : null, {
+    token,
     onOpen: loadBoard,
-    // A drop: the reload logs out on a bad token, or shows the banner until the socket is back.
-    onClose: () => void loadBoard().then(() => setOffline(true)),
+    // A drop: show the banner until the socket is back.
+    onClose: () => setOffline(true),
+    // A bad or expired token: back to the login form.
+    onUnauthorized: logout,
     onEvent: ({ type, order }: LiveEvent) => {
       setBoard((b) => b && { ...b, orders: withOrder(b.orders, order) });
       if (type === "order_created") {
@@ -92,7 +95,7 @@ export default function KdsBoard({ token }: { token: string }) {
     try {
       if (!(await advanceOrder(token, order.id, order.status))) setNotice(true);
     } catch (e) {
-      if (e instanceof AuthError) return setKdsToken(null);
+      if (e instanceof AuthError) return logout();
       setOffline(true);
     } finally {
       setBusy(null);
@@ -104,6 +107,20 @@ export default function KdsBoard({ token }: { token: string }) {
     o.pickup_type === "table"
       ? `🪑 ${t("menu.table", { table: o.table_number ?? "" })}`
       : `🚗 ${[o.car_model, o.car_color, o.car_plate].join(" · ")}`;
+  // Name, phone when given (left-to-right even in Arabic), and pickup.
+  const who = (o: KdsOrder) => (
+    <>
+      {o.customer_name}
+      {o.phone && (
+        <>
+          {" · "}
+          <bdi dir="ltr">{o.phone}</bdi>
+        </>
+      )}
+      {" · "}
+      {pickup(o)}
+    </>
+  );
   const ago = (o: KdsOrder) => {
     const minutes = Math.floor((now - Date.parse(o.paid_at ?? o.created_at)) / 60000);
     return minutes < 1 ? t("kds.justNow") : t("kds.minutesAgo", { n: minutes });
@@ -122,13 +139,13 @@ export default function KdsBoard({ token }: { token: string }) {
       <header className={styles.bar}>
         <span className={styles.clock}>{clock}</span>
         {board && <b className={`serif ${styles.cafe}`}>{localized(board.cafe.name_ar, board.cafe.name_en)}</b>}
-        {STATUSES.map((s) => (
+        {KDS_STATUSES.map((s) => (
           <span key={s} className={styles.count}>
             {t(`kds.count.${s}`)} <b>{orders.filter((o) => o.status === s).length}</b>
           </span>
         ))}
         <LangToggle />
-        <button className={styles.logout} onClick={() => setKdsToken(null)}>
+        <button className={styles.logout} onClick={logout}>
           {t("kds.logout")}
         </button>
       </header>
@@ -151,9 +168,7 @@ export default function KdsBoard({ token }: { token: string }) {
               <>
                 <span className={styles.tag}>● {t("kds.newOrder", { ago: ago(focus) })}</span>
                 <div className={`serif ${styles.bigNumber}`}>#{focus.order_number}</div>
-                <div className={styles.who}>
-                  {focus.customer_name} · {pickup(focus)}
-                </div>
+                <div className={styles.who}>{who(focus)}</div>
                 <ul className={styles.lines}>
                   {focus.lines.map((l, i) => (
                     <li key={i}>
@@ -172,7 +187,7 @@ export default function KdsBoard({ token }: { token: string }) {
           </section>
 
           <section className={styles.queue}>
-            {STATUSES.map((s) => {
+            {KDS_STATUSES.map((s) => {
               const group = orders.filter((o) => o.status === s && o !== focus);
               return (
                 <div key={s}>
@@ -189,9 +204,7 @@ export default function KdsBoard({ token }: { token: string }) {
                             {l.note && <em className={styles.note}> ({l.note})</em>}
                           </span>
                         ))}
-                        <small>
-                          {o.customer_name} · {pickup(o)}
-                        </small>
+                        <small>{who(o)}</small>
                       </div>
                       <button
                         className={styles.step}
@@ -216,7 +229,7 @@ export default function KdsBoard({ token }: { token: string }) {
 /** The board's Orders with `order` added, replaced, or removed once it has left the board; oldest paid first. */
 function withOrder(orders: KdsOrder[], order: Order): KdsOrder[] {
   const rest = orders.filter((o) => o.id !== order.id);
-  if (!STATUSES.includes(order.status as KdsStatus)) return rest;
+  if (!(KDS_STATUSES as readonly string[]).includes(order.status)) return rest;
   return [...rest, order as KdsOrder].sort((a, b) => (a.paid_at ?? "").localeCompare(b.paid_at ?? ""));
 }
 

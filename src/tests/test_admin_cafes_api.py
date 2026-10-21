@@ -98,3 +98,23 @@ def test_only_the_super_admin_can_add_a_cafe(client, seeded):
     assert _create(client, {}).status_code == 401
     assert _create(client, _login(client, "barista")).status_code == 403
     assert client.get("/api/cafes/north-beans/menu").status_code == 404
+
+
+def test_a_barista_password_over_72_bytes_is_refused(client, admin):
+    password = "ك" * 37  # 37 characters, 74 bytes in UTF-8
+
+    assert _create(client, admin, barista_password=password).status_code == 422
+    assert client.get("/api/cafes/north-beans/menu").status_code == 404
+
+
+def test_a_barista_password_of_72_bytes_works(client, admin):
+    password = "ك" * 36  # 72 bytes
+
+    assert _create(client, admin, barista_password=password).status_code == 201
+    assert client.post("/api/auth/login", json={"username": "north", "password": password}).status_code == 200
+
+
+def test_a_login_with_a_password_over_72_bytes_is_just_wrong(client, seeded):
+    res = client.post("/api/auth/login", json={"username": "admin", "password": "x" * 73})
+
+    assert res.status_code == 401

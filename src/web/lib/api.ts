@@ -32,7 +32,13 @@ export async function getMenu(slug: string): Promise<Menu | null> {
 
 export type PickupType = "table" | "car";
 
-export type OrderStatus = "awaiting_payment" | "pending" | "preparing" | "ready" | "completed";
+/** Every Order status, in order; the one status list in the web code. */
+export const ORDER_STATUSES = ["awaiting_payment", "pending", "preparing", "ready", "completed"] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+/** The statuses on the KDS board. */
+export const KDS_STATUSES = ["pending", "preparing", "ready"] as const satisfies readonly OrderStatus[];
+export type KdsStatus = (typeof KDS_STATUSES)[number];
 
 export type OrderLine = {
   product_id: number;
@@ -74,18 +80,32 @@ export type NewOrder = {
 
 export type PaymentMethod = "apple_pay" | "mada";
 
-/** Create an Order (awaiting payment). Throws on validation errors. */
+/** Thrown by createOrder when some Products in the cart are no longer available. */
+export class UnavailableProductsError extends Error {
+  constructor(readonly productIds: number[]) {
+    super("Products unavailable");
+  }
+}
+
+/** Create an Order (awaiting payment). Throws UnavailableProductsError, or Error on other failures. */
 export async function createOrder(slug: string, order: NewOrder): Promise<Order> {
   const res = await fetch(`${API_URL}/api/cafes/${encodeURIComponent(slug)}/orders`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(order),
   });
+  if (res.status === 422) {
+    const detail = (await res.json().catch(() => null))?.detail;
+    if (detail?.code === "products_unavailable") throw new UnavailableProductsError(detail.product_ids);
+  }
   if (!res.ok) throw new Error(`Create order failed: ${res.status}`);
   return res.json();
 }
 
-/** Pay through the fake provider; `source: "fail"` simulates a decline. Returns null when declined. */
+/**
+ * Pay through the fake provider; `source: "fail"` simulates a decline. Returns null when declined.
+ * If the Order was already paid (e.g. a retry after a lost response), returns the paid Order.
+ */
 export async function payOrder(id: string, method: PaymentMethod, source: "ok" | "fail" = "ok"): Promise<Order | null> {
   const res = await fetch(`${API_URL}/api/orders/${encodeURIComponent(id)}/pay`, {
     method: "POST",
@@ -93,6 +113,10 @@ export async function payOrder(id: string, method: PaymentMethod, source: "ok" |
     body: JSON.stringify({ method, source }),
   });
   if (res.status === 402) return null;
+  if (res.status === 409) {
+    const order = await getOrder(id);
+    if (order && order.status !== "awaiting_payment") return order;
+  }
   if (!res.ok) throw new Error(`Payment request failed: ${res.status}`);
   return res.json();
 }
@@ -126,8 +150,6 @@ export async function login(username: string, password: string): Promise<Login |
   return res.json();
 }
 
-export type KdsStatus = "pending" | "preparing" | "ready";
-
 export type KdsOrder = Order & { status: KdsStatus };
 
 export type Board = {
@@ -135,7 +157,8 @@ export type Board = {
   orders: KdsOrder[]; // oldest paid first
 };
 
-function authHeaders(token: string) {
+/** Headers for a staff request: the bearer token and a JSON body. */
+export function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 

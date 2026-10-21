@@ -12,7 +12,7 @@ from app.db import get_session
 from app.menu import CafeOut
 from app.models import Cafe, Order
 from app.order_status import ON_KDS, InvalidTransition, next_status
-from app.orders import OrderOut, _out
+from app.orders import OrderOut, order_out
 
 router = APIRouter(prefix="/api/kds")
 
@@ -31,7 +31,9 @@ def board(cafe: Cafe = Depends(require_barista), session: Session = Depends(get_
     orders = session.exec(
         select(Order).where(Order.cafe_id == cafe.id, Order.status.in_(ON_KDS)).order_by(Order.paid_at, Order.id)
     ).all()
-    return BoardOut(cafe=CafeOut.model_validate(cafe, from_attributes=True), orders=[_out(session, o) for o in orders])
+    return BoardOut(
+        cafe=CafeOut.model_validate(cafe, from_attributes=True), orders=[order_out(session, o) for o in orders]
+    )
 
 
 @router.post("/orders/{public_id}/advance", response_model=OrderOut)
@@ -54,6 +56,6 @@ def advance(
     session.add(order)
     session.commit()
     session.refresh(order)
-    out = _out(session, order)
+    out = order_out(session, order)
     live.publish_after_response(tasks, live.STATUS_CHANGED, cafe.id, out)
     return out
