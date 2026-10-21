@@ -2,3 +2,4 @@ fastapi[standard]>=0.157
 sqlmodel>=0.0.48
 psycopg[binary]>=3.3
 pydantic-settings>=2.16
+tzdata>=2025.2  # Asia/Riyadh on Windows
