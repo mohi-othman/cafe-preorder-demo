@@ -59,7 +59,21 @@ export const listCafes = (token: string) => request<AdminCafe[]>(token, "GET", "
 export const getAdminMenu = (token: string, cafeId: number) =>
   request<AdminMenu>(token, "GET", `/cafes/${cafeId}/menu`);
 
-export const createCategory = (token: string, cafeId: number, input: CategoryInput) =>
+/** One Café's paid Orders on one Asia/Riyadh day. Money in halalas. */
+export type DailyReport = {
+  cafe_id: number;
+  date: string; // YYYY-MM-DD
+  orders: number;
+  revenue: number;
+  average_order_value: number | null; // null when there are no Orders
+  top_products: { product_id: number; name_ar: string; name_en: string; qty: number; revenue: number }[];
+  orders_per_hour: number[]; // 24 counts, index = Riyadh hour
+};
+
+export const getDailyReport = (token: string, cafeId: number, date: string) =>
+  request<DailyReport>(token, "GET", `/cafes/${cafeId}/reports/daily?date=${date}`);
+
+export const createCategory =(token: string, cafeId: number, input: CategoryInput) =>
   request<AdminCategory>(token, "POST", `/cafes/${cafeId}/categories`, input);
 
 export const updateCategory = (token: string, cafeId: number, id: number, input: Partial<CategoryInput>) =>
