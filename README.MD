@@ -40,7 +40,7 @@ Copy-Item src\.env.example src\api\.env
 
 Edit `src\api\.env`:
 
-- In `DATABASE_URL` and `TEST_DATABASE_URL`, replace `change-me` with `qahwati` (the local Docker password).
+- `DATABASE_URL` and `TEST_DATABASE_URL` already point at the local Docker database (password `qahwati`, local use only).
 - Set `ADMIN_PASSWORD`, `BARISTA_PASSWORD` and `JWT_SECRET` to values of your own. A random secret:
   `python -c "import secrets; print(secrets.token_urlsafe(48))"`
 
@@ -241,7 +241,7 @@ QR codes use the address the admin page is open on. Open Admin → QR codes on t
 | Wherever you run the seed | `DATABASE_URL`, `ADMIN_PASSWORD`, `BARISTA_PASSWORD` |
 | Vercel project | `NEXT_PUBLIC_API_URL` |
 
-Generate new secrets and passwords for each environment, and never commit them. `src/.env.example` holds placeholders only.
+Generate new secrets and passwords for each environment, and never commit them. `src/.env.example` holds placeholders only, apart from the local Docker database password.
 
 ## Limits
 
