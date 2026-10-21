@@ -104,3 +104,58 @@ export async function getOrder(id: string): Promise<Order | null> {
   if (!res.ok) throw new Error(`Order request failed: ${res.status}`);
   return res.json();
 }
+
+/** Thrown when the staff token is missing, expired or not allowed; the KDS logs out. */
+export class AuthError extends Error {}
+
+export type Login = {
+  access_token: string;
+  role: "admin" | "barista";
+  cafe: Menu["cafe"] | null;
+};
+
+/** Staff login. Returns null on a wrong username or password. */
+export async function login(username: string, password: string): Promise<Login | null> {
+  const res = await fetch(`${API_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`Login failed: ${res.status}`);
+  return res.json();
+}
+
+export type KdsStatus = "pending" | "preparing" | "ready";
+
+export type KdsOrder = Order & { status: KdsStatus };
+
+export type Board = {
+  cafe: Menu["cafe"];
+  orders: KdsOrder[]; // oldest paid first
+};
+
+function authHeaders(token: string) {
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+/** The Barista's Café and its pending, preparing and ready Orders. */
+export async function getBoard(token: string): Promise<Board> {
+  const res = await fetch(`${API_URL}/api/kds/orders`, { headers: authHeaders(token), cache: "no-store" });
+  if (res.status === 401 || res.status === 403) throw new AuthError();
+  if (!res.ok) throw new Error(`Board request failed: ${res.status}`);
+  return res.json();
+}
+
+/** Move an Order one step on from `fromStatus`. Returns false when it had already moved (stale board). */
+export async function advanceOrder(token: string, id: string, fromStatus: KdsStatus): Promise<boolean> {
+  const res = await fetch(`${API_URL}/api/kds/orders/${encodeURIComponent(id)}/advance`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ from_status: fromStatus }),
+  });
+  if (res.status === 401 || res.status === 403) throw new AuthError();
+  if (res.status === 409 || res.status === 404) return false;
+  if (!res.ok) throw new Error(`Advance failed: ${res.status}`);
+  return true;
+}

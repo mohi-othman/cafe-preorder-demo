@@ -12,6 +12,10 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or dotenv_values(_env_fi
 if not TEST_DATABASE_URL:
     raise RuntimeError("TEST_DATABASE_URL is not set (env var or src/api/.env)")
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+# Test-only secrets; the real values in src/api/.env are never used by tests.
+os.environ["ADMIN_PASSWORD"] = "admin-test-pass"
+os.environ["BARISTA_PASSWORD"] = "barista-test-pass"
+os.environ["JWT_SECRET"] = "jwt-test-secret-that-is-long-enough-for-hs256"
 
 
 def _create_database_if_missing(url: str) -> None:

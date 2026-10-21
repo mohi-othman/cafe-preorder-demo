@@ -34,6 +34,16 @@ class Product(SQLModel, table=True):
     position: int = 0
 
 
+class User(SQLModel, table=True):
+    """A staff login: the Super Admin (no Café) or a Barista of one Café."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(unique=True, index=True)
+    password_hash: str  # bcrypt
+    role: str  # "admin" or "barista"
+    cafe_id: int | None = Field(default=None, foreign_key="cafe.id", index=True)
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 

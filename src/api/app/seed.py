@@ -1,14 +1,20 @@
-"""Load the demo Café and its Menu. Safe to run more than once.
+"""Load the demo Café, its Menu and the admin and Barista logins. Safe to run more than once.
 
 Run from src/api:  python -m app.seed
 """
 
 from sqlmodel import Session, select
 
+from app.auth import ADMIN, BARISTA, hash_password
+from app.config import settings
 from app.db import create_schema, engine
-from app.models import Cafe, Category, Product
+from app.models import Cafe, Category, Product, User
 
-CAFE = {"slug": "demo-roasters", "name_ar": "محمصة التجربة", "name_en": "Demo Roasters"}
+# Logins; passwords come from ADMIN_PASSWORD and BARISTA_PASSWORD.
+ADMIN_USERNAME = "admin"
+BARISTA_USERNAME = "barista"  # Demo Roasters
+
+CAFE ={"slug": "demo-roasters", "name_ar": "محمصة التجربة", "name_en": "Demo Roasters"}
 
 # (name_ar, name_en, [(name_ar, name_en, desc_ar, desc_en, price_halalas, available, image)])
 MENU = [
@@ -48,7 +54,12 @@ def _upsert(session: Session, model, keys: dict, values: dict):
 
 
 def seed(session: Session) -> None:
-    cafe = _upsert(session, Cafe, {"slug": CAFE["slug"]}, {"name_ar": CAFE["name_ar"], "name_en": CAFE["name_en"]})
+    missing = [name for name, value in (("ADMIN_PASSWORD", settings.admin_password),
+                                         ("BARISTA_PASSWORD", settings.barista_password)) if not value]
+    if missing:
+        raise RuntimeError(f"Set {' and '.join(missing)} (env var or src/api/.env) before seeding")
+
+    cafe =_upsert(session, Cafe, {"slug": CAFE["slug"]}, {"name_ar": CAFE["name_ar"], "name_en": CAFE["name_en"]})
     for c_pos, (c_ar, c_en, products) in enumerate(MENU):
         cat = _upsert(session, Category, {"cafe_id": cafe.id, "name_en": c_en}, {"name_ar": c_ar, "position": c_pos})
         for p_pos, (p_ar, p_en, d_ar, d_en, price, available, image) in enumerate(products):
@@ -56,6 +67,10 @@ def seed(session: Session) -> None:
                 "category_id": cat.id, "name_ar": p_ar, "description_ar": d_ar, "description_en": d_en,
                 "price": price, "available": available, "image_url": f"/menu/{image}.svg", "position": p_pos,
             })
+    _upsert(session, User, {"username": ADMIN_USERNAME}, {
+        "role": ADMIN, "cafe_id": None, "password_hash": hash_password(settings.admin_password)})
+    _upsert(session, User, {"username": BARISTA_USERNAME}, {
+        "role": BARISTA, "cafe_id": cafe.id, "password_hash": hash_password(settings.barista_password)})
     session.commit()
 
 
