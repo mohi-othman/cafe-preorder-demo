@@ -2,15 +2,17 @@
 
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import LangToggle from "@/components/LangToggle";
 import { useRouter } from "next/navigation";
 import { createOrder, type PickupType } from "@/lib/api";
 import { useCart } from "@/lib/cart";
-import { formatPrice, localized, t } from "@/lib/i18n";
+import { useLang } from "@/lib/useLang";
 import styles from "../../../order.module.css";
 
 const noop = () => () => {};
 
 export default function CheckoutView({ slug, table }: { slug: string; table: string | null }) {
+  const { lang, t, localized, formatPrice } = useLang();
   const router = useRouter();
   const cart = useCart(slug);
   // The cart lives in localStorage, so wait for the client before showing "empty".
@@ -51,9 +53,10 @@ export default function CheckoutView({ slug, table }: { slug: string; table: str
   const header = (
     <header className={styles.hdr}>
       <Link className={styles.back} href={menuHref} aria-label={t("checkout.back")}>
-        →
+        {lang === "ar" ? "→" : "←"}
       </Link>
       <h1 className="serif">{t("checkout.title")}</h1>
+      <LangToggle className={styles.lang} />
     </header>
   );
 

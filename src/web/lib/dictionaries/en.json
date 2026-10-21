@@ -9,6 +9,8 @@
   "menu.add": "Add {name}",
   "menu.empty": "No matching products",
   "cafe.notFound": "We couldn't find this café",
+  "lang.switch": "عربي",
+  "lang.switchLabel": "Switch to Arabic",
   "cart.count": "{count} items",
   "cart.view": "View cart",
   "checkout.title": "Checkout",

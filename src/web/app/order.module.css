@@ -48,6 +48,10 @@
   font-size: 20px;
 }
 
+.lang {
+  margin-inline-start: auto;
+}
+
 .back {
   color: var(--muted);
   font-size: 22px;
@@ -230,6 +234,7 @@
 
 .link {
   display: block;
+  width: fit-content;
   margin: 6px auto 0;
   border: 0;
   background: none;

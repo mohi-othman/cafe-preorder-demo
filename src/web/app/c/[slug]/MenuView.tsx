@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import LangToggle from "@/components/LangToggle";
 import type { Menu } from "@/lib/api";
 import { useCart } from "@/lib/cart";
-import { formatPrice, localized, t } from "@/lib/i18n";
+import { useLang } from "@/lib/useLang";
 import CartBar from "./CartBar";
 import styles from "./menu.module.css";
 
 const PLACEHOLDER = "/menu/placeholder.svg";
 
 export default function MenuView({ menu, table }: { menu: Menu; table: string | null }) {
+  const { t, localized, formatPrice } = useLang();
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const cart = useCart(menu.cafe.slug);
@@ -38,6 +40,7 @@ export default function MenuView({ menu, table }: { menu: Menu; table: string | 
           <h1 className="serif">{cafeName}</h1>
           {table && <small>{t("menu.table", { table })}</small>}
         </div>
+        <LangToggle className={styles.lang} />
       </header>
 
       <input

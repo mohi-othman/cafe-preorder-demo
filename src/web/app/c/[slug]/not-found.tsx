@@ -1,6 +1,16 @@
-import { t } from "@/lib/i18n";
+import LangToggle from "@/components/LangToggle";
+import T from "@/components/T";
 import styles from "./menu.module.css";
 
 export default function NotFound() {
-  return <p className={styles.status}>{t("cafe.notFound")}</p>;
+  return (
+    <main className={styles.page}>
+      <header className={styles.top}>
+        <LangToggle className={styles.lang} />
+      </header>
+      <p className={styles.status}>
+        <T k="cafe.notFound" />
+      </p>
+    </main>
+  );
 }

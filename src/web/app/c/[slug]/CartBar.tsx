@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
-import { formatPrice, t } from "@/lib/i18n";
+import { useLang } from "@/lib/useLang";
 import styles from "../../order.module.css";
 
 /** Floating ink bar with the cart's count and total; links to checkout. */
 export default function CartBar({ slug, table }: { slug: string; table: string | null }) {
+  const { t, formatPrice } = useLang();
   const { count, total } = useCart(slug);
   if (count === 0) return null;
   const query = table ? `?table=${encodeURIComponent(table)}` : "";
