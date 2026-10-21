@@ -12,10 +12,10 @@ from pydantic import BaseModel, BeforeValidator, StringConstraints
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.auth import require_admin
+from app.auth import BARISTA, hash_password, require_admin
 from app.db import get_session
 from app.menu import CafeOut
-from app.models import Cafe, Category, OrderLine, Product
+from app.models import Cafe, Category, OrderLine, Product, User
 from app.money import halalas_to_sar, sar_to_halalas
 
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(require_admin)])
@@ -35,6 +35,9 @@ RequiredText = Annotated[str, StringConstraints(strip_whitespace=True, min_lengt
 Text = Annotated[str, StringConstraints(strip_whitespace=True)]
 OptionalText = Annotated[str | None, BeforeValidator(_strip_or_none)]
 Halalas = Annotated[int, BeforeValidator(_parse_sar)]  # from SAR text
+# The Café's part of /c/<slug>: lowercase letters and digits, words joined by single hyphens.
+Slug = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")]
+MIN_PASSWORD_LENGTH = 8
 
 
 class AdminCafeOut(BaseModel):
@@ -42,6 +45,14 @@ class AdminCafeOut(BaseModel):
     slug: str
     name_ar: str
     name_en: str
+
+
+class CafeIn(BaseModel):
+    name_ar: RequiredText
+    name_en: Text = ""
+    slug: Slug
+    barista_username: RequiredText
+    barista_password: Annotated[str, StringConstraints(min_length=MIN_PASSWORD_LENGTH)]
 
 
 class AdminCategoryOut(BaseModel):
@@ -151,6 +162,25 @@ def _save(session: Session, row):
 @router.get("/cafes", response_model=list[AdminCafeOut])
 def list_cafes(session: Session = Depends(get_session)):
     return session.exec(select(Cafe).order_by(Cafe.id)).all()
+
+
+@router.post("/cafes", status_code=201, response_model=AdminCafeOut)
+def create_cafe(body: CafeIn, session: Session = Depends(get_session)):
+    """A new Café with an empty Menu and its Barista login, in one transaction."""
+    if session.exec(select(Cafe.id).where(Cafe.slug == body.slug)).first() is not None:
+        raise HTTPException(status_code=409, detail="slug_taken")
+    if session.exec(select(User.id).where(User.username == body.barista_username)).first() is not None:
+        raise HTTPException(status_code=409, detail="username_taken")
+    cafe =Cafe(slug=body.slug, name_ar=body.name_ar, name_en=body.name_en)
+    session.add(cafe)
+    session.flush()
+    session.add(User(
+        username=body.barista_username, password_hash=hash_password(body.barista_password),
+        role=BARISTA, cafe_id=cafe.id,
+    ))
+    session.commit()
+    session.refresh(cafe)
+    return cafe
 
 
 @router.get("/cafes/{cafe_id}/menu", response_model=AdminMenuOut)

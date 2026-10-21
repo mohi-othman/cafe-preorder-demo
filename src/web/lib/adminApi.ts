@@ -34,8 +34,13 @@ export type ProductInput = {
   image_url: string;
 };
 
-/** 409: a Category that still has Products, or a Product that is on past Orders. */
-export class ConflictError extends Error {}
+/** 409: a Category that still has Products, a Product that is on past Orders, or a taken slug or username. */
+export class ConflictError extends Error {
+  /** The API's `detail`; "slug_taken" or "username_taken" when adding a Café. */
+  constructor(readonly detail: string = "") {
+    super(detail);
+  }
+}
 
 /** 422: the API refused the input (missing Arabic name, bad price, …). */
 export class InvalidInputError extends Error {}
@@ -48,13 +53,24 @@ async function request<T>(token: string, method: string, path: string, body?: un
     cache: "no-store",
   });
   if (res.status === 401 || res.status === 403) throw new AuthError();
-  if (res.status === 409) throw new ConflictError();
+  if (res.status === 409) throw new ConflictError((await res.json().catch(() => ({}))).detail);
   if (res.status === 422) throw new InvalidInputError();
   if (!res.ok) throw new Error(`Admin request failed: ${res.status}`);
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
 export const listCafes = (token: string) => request<AdminCafe[]>(token, "GET", "/cafes");
+
+export type CafeInput = {
+  name_ar: string;
+  name_en: string;
+  slug: string;
+  barista_username: string;
+  barista_password: string;
+};
+
+/** Adds a Café (empty Menu) and its Barista login. */
+export const createCafe = (token: string, input: CafeInput) => request<AdminCafe>(token, "POST", "/cafes", input);
 
 export const getAdminMenu = (token: string, cafeId: number) =>
   request<AdminMenu>(token, "GET", `/cafes/${cafeId}/menu`);
