@@ -7,11 +7,18 @@ class FakeConnection:
     def __init__(self, fail=False):
         self.received = []
         self.fail = fail
+        self.closed = False
+        self.close_fails = False
 
     async def send_json(self, message):
         if self.fail:
             raise RuntimeError("connection gone")
         self.received.append(message)
+
+    async def close(self, code=1000):
+        if self.close_fails:
+            raise RuntimeError("already gone")
+        self.closed = True
 
 
 def publish(b, channels, message):
@@ -66,3 +73,26 @@ def test_publishing_to_a_channel_nobody_listens_on_is_harmless():
     b.unsubscribe("cafe:1", FakeConnection())  # never subscribed
 
     publish(b, ["cafe:9"], {"n": 1})
+
+
+def test_a_broken_connection_is_closed_so_the_client_reconnects():
+    b = Broadcaster()
+    broken = FakeConnection(fail=True)
+    b.subscribe("cafe:1", broken)
+
+    publish(b, ["cafe:1"], {"n": 1})
+
+    assert broken.closed
+
+
+def test_a_connection_that_fails_to_close_is_still_dropped():
+    b = Broadcaster()
+    broken = FakeConnection(fail=True)
+    broken.close_fails = True
+    b.subscribe("cafe:1", broken)
+
+    publish(b, ["cafe:1"], {"n": 1})
+    broken.fail = False
+    publish(b, ["cafe:1"], {"n": 2})
+
+    assert broken.received == []

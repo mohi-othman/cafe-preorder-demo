@@ -97,6 +97,24 @@
   color: var(--accent);
 }
 
+.unavailable {
+  color: #8a2c14;
+}
+
+.unavailable .row:first-child span:first-child {
+  text-decoration: line-through;
+}
+
+.remove {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: #fff;
+  color: #8a2c14;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .stepper {
   display: flex;
   align-items: center;

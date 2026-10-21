@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import LangToggle from "@/components/LangToggle";
 import { useRouter } from "next/navigation";
-import { createOrder, type PickupType } from "@/lib/api";
+import { createOrder, UnavailableProductsError, type PickupType } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import { useLang } from "@/lib/useLang";
 import styles from "../../../order.module.css";
@@ -24,6 +24,9 @@ export default function CheckoutView({ slug, table }: { slug: string; table: str
   const [car, setCar] = useState({ model: "", color: "", plate: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  // Products the API said are no longer available; the customer removes them before ordering again.
+  const [unavailable, setUnavailable] = useState<number[]>([]);
+  const blocked = cart.lines.some((l) => unavailable.includes(l.product.id));
 
   const menuHref = `/c/${encodeURIComponent(slug)}${table ? `?table=${encodeURIComponent(table)}` : ""}`;
 
@@ -43,8 +46,9 @@ export default function CheckoutView({ slug, table }: { slug: string; table: str
         lines: cart.lines.map((l) => ({ product_id: l.product.id, qty: l.qty, note: l.note.trim() || null })),
       });
       router.push(`/o/${order.id}/pay`);
-    } catch {
-      setError(true);
+    } catch (e) {
+      if (e instanceof UnavailableProductsError) setUnavailable(e.productIds);
+      else setError(true);
     } finally {
       setBusy(false);
     }
@@ -82,6 +86,22 @@ export default function CheckoutView({ slug, table }: { slug: string; table: str
           <h2>{t("checkout.lines")}</h2>
           {cart.lines.map((l) => {
             const productName = localized(l.product.name_ar, l.product.name_en);
+            if (unavailable.includes(l.product.id)) {
+              return (
+                <div key={l.product.id} className={`${styles.line} ${styles.unavailable}`}>
+                  <div className={styles.row}>
+                    <span>{productName}</span>
+                    <span>{formatPrice(l.product.price * l.qty)}</span>
+                  </div>
+                  <div className={styles.row}>
+                    <span>{t("checkout.unavailableLine")}</span>
+                    <button type="button" className={styles.remove} onClick={() => cart.setQty(l.product.id, 0)}>
+                      {t("checkout.remove")}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={l.product.id} className={styles.line}>
                 <div className={styles.row}>
@@ -204,12 +224,12 @@ export default function CheckoutView({ slug, table }: { slug: string; table: str
         </div>
         <p className={styles.hint}>{t("checkout.vat")}</p>
 
-        {error && (
+        {(error || blocked) && (
           <p className={styles.error} role="alert">
-            {t("checkout.error")}
+            {t(blocked ? "checkout.unavailable" : "checkout.error")}
           </p>
         )}
-        <button className={styles.cta} type="submit" disabled={busy}>
+        <button className={styles.cta} type="submit" disabled={busy || blocked}>
           {t("checkout.submit")}
         </button>
       </form>

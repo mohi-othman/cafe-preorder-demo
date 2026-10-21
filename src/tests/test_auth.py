@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.auth import (
-    Claims, InvalidToken, create_token, decode_token, hash_password, require_admin, require_barista_claims,
+    TOKEN_LIFETIME, Claims, InvalidToken, create_token, decode_token, hash_password, require_admin, require_barista_claims,
     verify_password,
 )
 
@@ -23,13 +23,17 @@ def test_a_password_matches_its_hash_but_not_another_password():
 def test_a_token_carries_the_role_and_cafe():
     token = create_token(user_id=7, role="barista", cafe_id=3, secret=SECRET, now=NOW)
 
-    assert decode_token(token, SECRET, now=NOW + timedelta(hours=1)) == Claims(user_id=7, role="barista", cafe_id=3)
+    assert decode_token(token, SECRET, now=NOW + timedelta(hours=1)) == Claims(
+        user_id=7, role="barista", cafe_id=3, expires_at=NOW + TOKEN_LIFETIME,
+    )
 
 
 def test_an_admin_token_has_no_cafe():
     token = create_token(user_id=1, role="admin", cafe_id=None, secret=SECRET, now=NOW)
 
-    assert decode_token(token, SECRET, now=NOW) == Claims(user_id=1, role="admin", cafe_id=None)
+    assert decode_token(token, SECRET, now=NOW) == Claims(
+        user_id=1, role="admin", cafe_id=None, expires_at=NOW + TOKEN_LIFETIME,
+    )
 
 
 def test_a_token_signed_with_another_secret_is_rejected():
@@ -64,3 +68,9 @@ def test_kds_routes_reject_admins_and_baristas_without_a_cafe():
             require_barista_claims(claims)
         assert e.value.status_code == 403
     assert require_barista_claims(Claims(user_id=7, role="barista", cafe_id=3)).cafe_id == 3
+
+
+def test_a_password_over_72_bytes_never_matches():
+    hashed = hash_password("x" * 72)
+
+    assert not verify_password("x" * 73, hashed)

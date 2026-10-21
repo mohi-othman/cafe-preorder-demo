@@ -11,6 +11,8 @@ from typing import Any, Protocol
 class Connection(Protocol):
     async def send_json(self, data: Any) -> None: ...
 
+    async def close(self, code: int = 1000) -> None: ...
+
 
 def cafe_channel(cafe_id: int) -> str:
     return f"cafe:{cafe_id}"
@@ -35,13 +37,20 @@ class Broadcaster:
                 del self._channels[channel]
 
     async def publish(self, channels: list[str], message: Any) -> None:
-        """Send `message` to every connection on `channels`; drop connections that fail."""
+        """Send `message` to every connection on `channels`; drop and close connections that fail.
+
+        Closing tells a client that missed a message to reconnect and reload, instead of waiting forever.
+        """
         for channel in channels:
             for conn in list(self._channels.get(channel, ())):
                 try:
                     await conn.send_json(message)
                 except Exception:
                     self.unsubscribe(channel, conn)
+                    try:
+                        await conn.close(code=1011)  # internal error: the client reconnects
+                    except Exception:
+                        pass  # already gone
 
 
 broadcaster = Broadcaster()

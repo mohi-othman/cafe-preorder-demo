@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 from uuid import UUID
@@ -10,11 +11,12 @@ from app import live
 from app.db import get_session
 from app.menu import CafeOut
 from app.models import Cafe, Order, OrderLine, Product
-from app.order_status import AWAITING_PAYMENT, InvalidTransition
+from app.order_status import AWAITING_PAYMENT
 from app.ordering import mark_paid, order_total
 from app.payments import PaymentProvider, get_payment_provider
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger(__name__)
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)]
 
@@ -80,7 +82,7 @@ class OrderOut(BaseModel):
     lines: list[LineOut]
 
 
-def _out(session: Session, order: Order) -> OrderOut:
+def order_out(session: Session, order: Order) -> OrderOut:
     cafe = session.get(Cafe, order.cafe_id)
     lines = session.exec(select(OrderLine).where(OrderLine.order_id == order.id).order_by(OrderLine.id)).all()
     return OrderOut(
@@ -91,8 +93,9 @@ def _out(session: Session, order: Order) -> OrderOut:
     )
 
 
-def _get_order(session: Session, public_id: UUID) -> Order:
-    order = session.exec(select(Order).where(Order.public_id == public_id)).first()
+def _get_order(session: Session, public_id: UUID, lock: bool = False) -> Order:
+    query = select(Order).where(Order.public_id == public_id)
+    order = session.exec(query.with_for_update() if lock else query).first()
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
@@ -111,7 +114,7 @@ def create_order(slug: str, body: OrderIn, session: Session = Depends(get_sessio
         ).all()
     }
     if missing := ids - products.keys():
-        raise HTTPException(status_code=422, detail=f"Products not available: {sorted(missing)}")
+        raise HTTPException(status_code=422, detail={"code": "products_unavailable", "product_ids": sorted(missing)})
 
     order = Order(
         cafe_id=cafe.id,
@@ -129,7 +132,7 @@ def create_order(slug: str, body: OrderIn, session: Session = Depends(get_sessio
         ))
     session.commit()
     session.refresh(order)
-    return _out(session, order)
+    return order_out(session, order)
 
 
 @router.post("/orders/{public_id}/pay", response_model=OrderOut)
@@ -140,7 +143,9 @@ def pay_order(
     session: Session = Depends(get_session),
     provider: PaymentProvider = Depends(get_payment_provider),
 ):
-    order = _get_order(session, public_id)
+    # The row lock is held through the charge until mark_paid commits, so a second pay of the
+    # same Order waits here and then sees it paid: one charge only.
+    order = _get_order(session, public_id, lock=True)
     if order.status != AWAITING_PAYMENT:
         raise HTTPException(status_code=409, detail="Order is already paid")
     result = provider.charge(amount=order.total, method=body.method, source=body.source)
@@ -148,13 +153,16 @@ def pay_order(
         raise HTTPException(status_code=402, detail=result.error or "payment_failed")
     try:
         mark_paid(session, order, now=datetime.now(timezone.utc))
-    except InvalidTransition:  # paid by a concurrent request
-        raise HTTPException(status_code=409, detail="Order is already paid")
-    out = _out(session, order)
+    except Exception:
+        # Charged but not marked paid: leave a trace so staff can mark it paid or refund it.
+        log.exception("Order %s was charged %s halalas (payment %s) but could not be marked paid",
+                      order.public_id, order.total, result.reference)
+        raise
+    out = order_out(session, order)
     live.publish_after_response(tasks, live.ORDER_CREATED, order.cafe_id, out)
     return out
 
 
 @router.get("/orders/{public_id}", response_model=OrderOut)
 def get_order(public_id: UUID, session: Session = Depends(get_session)):
-    return _out(session, _get_order(session, public_id))
+    return order_out(session, _get_order(session, public_id))

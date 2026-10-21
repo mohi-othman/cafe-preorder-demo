@@ -8,11 +8,11 @@ Deleting is strict: a Category that still has Products, or a Product that is on 
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, BeforeValidator, StringConstraints
+from pydantic import AfterValidator, BaseModel, BeforeValidator, StringConstraints
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.auth import BARISTA, hash_password, require_admin
+from app.auth import BARISTA, MAX_PASSWORD_BYTES, hash_password, require_admin
 from app.db import get_session
 from app.menu import CafeOut
 from app.models import Cafe, Category, OrderLine, Product, User
@@ -29,6 +29,12 @@ def _parse_sar(v):
     if not isinstance(v, str):  # numbers would bring float rounding with them
         raise ValueError('price_sar must be text, e.g. "18.50"')
     return sar_to_halalas(v)
+
+
+def _fits_bcrypt(v: str) -> str:
+    if len(v.encode()) > MAX_PASSWORD_BYTES:
+        raise ValueError(f"password must be at most {MAX_PASSWORD_BYTES} bytes in UTF-8")
+    return v
 
 
 RequiredText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -52,7 +58,7 @@ class CafeIn(BaseModel):
     name_en: Text = ""
     slug: Slug
     barista_username: RequiredText
-    barista_password: Annotated[str, StringConstraints(min_length=MIN_PASSWORD_LENGTH)]
+    barista_password: Annotated[str, StringConstraints(min_length=MIN_PASSWORD_LENGTH), AfterValidator(_fits_bcrypt)]
 
 
 class AdminCategoryOut(BaseModel):
@@ -116,21 +122,21 @@ class ProductPatch(BaseModel):
     image_url: OptionalText = None
 
 
-def _cafe(session: Session, cafe_id: int) -> Cafe:
+def _cafe_or_404(session: Session, cafe_id: int) -> Cafe:
     cafe = session.get(Cafe, cafe_id)
     if cafe is None:
         raise HTTPException(status_code=404, detail="Café not found")
     return cafe
 
 
-def _category(session: Session, cafe_id: int, category_id: int) -> Category:
+def _category_or_404(session: Session, cafe_id: int, category_id: int) -> Category:
     cat = session.get(Category, category_id)
     if cat is None or cat.cafe_id != cafe_id:
         raise HTTPException(status_code=404, detail="Category not found")
     return cat
 
 
-def _product(session: Session, cafe_id: int, product_id: int) -> Product:
+def _product_or_404(session: Session, cafe_id: int, product_id: int) -> Product:
     product = session.get(Product, product_id)
     if product is None or product.cafe_id != cafe_id:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -152,7 +158,7 @@ def _product_out(p: Product) -> AdminProductOut:
     return AdminProductOut(**p.model_dump(), price_sar=halalas_to_sar(p.price))
 
 
-def _save(session: Session, row):
+def _commit_and_refresh(session: Session, row):
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -185,7 +191,7 @@ def create_cafe(body: CafeIn, session: Session = Depends(get_session)):
 
 @router.get("/cafes/{cafe_id}/menu", response_model=AdminMenuOut)
 def get_menu(cafe_id: int, session: Session = Depends(get_session)):
-    cafe = _cafe(session, cafe_id)
+    cafe = _cafe_or_404(session, cafe_id)
     categories = session.exec(
         select(Category).where(Category.cafe_id == cafe_id).order_by(Category.position, Category.id)
     ).all()
@@ -203,22 +209,22 @@ def get_menu(cafe_id: int, session: Session = Depends(get_session)):
 
 @router.post("/cafes/{cafe_id}/categories", status_code=201, response_model=AdminCategoryOut)
 def create_category(cafe_id: int, body: CategoryIn, session: Session = Depends(get_session)):
-    _cafe(session, cafe_id)
+    _cafe_or_404(session, cafe_id)
     position = _next_position(session, Category, cafe_id)
-    return _save(session, Category(cafe_id=cafe_id, position=position, **body.model_dump()))
+    return _commit_and_refresh(session, Category(cafe_id=cafe_id, position=position, **body.model_dump()))
 
 
 @router.patch("/cafes/{cafe_id}/categories/{category_id}", response_model=AdminCategoryOut)
 def update_category(cafe_id: int, category_id: int, body: CategoryPatch, session: Session = Depends(get_session)):
-    cat = _category(session, cafe_id, category_id)
+    cat = _category_or_404(session, cafe_id, category_id)
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(cat, k, v)
-    return _save(session, cat)
+    return _commit_and_refresh(session, cat)
 
 
 @router.delete("/cafes/{cafe_id}/categories/{category_id}", status_code=204)
 def delete_category(cafe_id: int, category_id: int, session: Session = Depends(get_session)):
-    cat = _category(session, cafe_id, category_id)
+    cat = _category_or_404(session, cafe_id, category_id)
     if session.exec(select(Product.id).where(Product.category_id == cat.id)).first() is not None:
         raise HTTPException(status_code=409, detail="Category still has Products; move or delete them first")
     session.delete(cat)
@@ -230,17 +236,17 @@ def delete_category(cafe_id: int, category_id: int, session: Session = Depends(g
 
 @router.post("/cafes/{cafe_id}/products", status_code=201, response_model=AdminProductOut)
 def create_product(cafe_id: int, body: ProductIn, session: Session = Depends(get_session)):
-    _cafe(session, cafe_id)
+    _cafe_or_404(session, cafe_id)
     _check_category(session, cafe_id, body.category_id)
     fields = body.model_dump()
     fields["price"] = fields.pop("price_sar")
     product = Product(cafe_id=cafe_id, position=_next_position(session, Product, cafe_id), **fields)
-    return _product_out(_save(session, product))
+    return _product_out(_commit_and_refresh(session, product))
 
 
 @router.patch("/cafes/{cafe_id}/products/{product_id}", response_model=AdminProductOut)
 def update_product(cafe_id: int, product_id: int, body: ProductPatch, session: Session = Depends(get_session)):
-    product = _product(session, cafe_id, product_id)
+    product = _product_or_404(session, cafe_id, product_id)
     fields = body.model_dump(exclude_unset=True)
     if "category_id" in fields:
         _check_category(session, cafe_id, fields["category_id"])
@@ -248,12 +254,12 @@ def update_product(cafe_id: int, product_id: int, body: ProductPatch, session: S
         fields["price"] = fields.pop("price_sar")
     for k, v in fields.items():
         setattr(product, k, v)
-    return _product_out(_save(session, product))
+    return _product_out(_commit_and_refresh(session, product))
 
 
 @router.delete("/cafes/{cafe_id}/products/{product_id}", status_code=204)
 def delete_product(cafe_id: int, product_id: int, session: Session = Depends(get_session)):
-    product = _product(session, cafe_id, product_id)
+    product = _product_or_404(session, cafe_id, product_id)
     if session.exec(select(OrderLine.id).where(OrderLine.product_id == product.id)).first() is not None:
         raise HTTPException(status_code=409, detail="Product is on past Orders; mark it unavailable instead")
     session.delete(product)

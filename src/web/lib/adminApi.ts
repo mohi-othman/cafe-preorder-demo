@@ -1,4 +1,4 @@
-import { API_URL, AuthError, type Menu } from "./api";
+import { API_URL, AuthError, authHeaders, type Menu } from "./api";
 
 export type AdminCafe = { id: number; slug: string; name_ar: string; name_en: string };
 
@@ -48,7 +48,7 @@ export class InvalidInputError extends Error {}
 async function request<T>(token: string, method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_URL}/api/admin${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: authHeaders(token),
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });

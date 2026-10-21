@@ -36,6 +36,10 @@ class Claims:
     user_id: int
     role: str
     cafe_id: int | None
+    expires_at: datetime | None = None
+
+
+MAX_PASSWORD_BYTES = 72  # bcrypt's limit, in UTF-8 bytes; longer passwords make bcrypt raise
 
 
 def hash_password(password: str) -> str:
@@ -43,6 +47,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    if len(password.encode()) > MAX_PASSWORD_BYTES:  # can't have been set, so it can't match
+        return False
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
@@ -57,7 +63,10 @@ def decode_token(token: str, secret: str, now: datetime) -> Claims:
         payload = jwt.decode(token, secret, algorithms=[ALGORITHM], options={"verify_exp": False, "require": ["exp"]})
         if payload["exp"] <= now.timestamp():
             raise InvalidToken("token expired")
-        return Claims(user_id=int(payload["sub"]), role=payload["role"], cafe_id=payload.get("cafe_id"))
+        return Claims(
+            user_id=int(payload["sub"]), role=payload["role"], cafe_id=payload.get("cafe_id"),
+            expires_at=datetime.fromtimestamp(payload["exp"], timezone.utc),
+        )
     except (jwt.PyJWTError, KeyError, TypeError, ValueError) as e:
         raise InvalidToken(str(e)) from e
 
