@@ -1,0 +1,12 @@
+{
+  "app.name": "قهوتي",
+  "app.description": "اطلب قهوتك مسبقاً من جوالك",
+  "common.loading": "جارٍ التحميل…",
+  "money.sar": "{amount} ر.س",
+  "menu.search": "ابحث في المنيو…",
+  "menu.all": "الكل",
+  "menu.table": "طاولة {table}",
+  "menu.add": "أضف {name}",
+  "menu.empty": "لا توجد منتجات مطابقة",
+  "cafe.notFound": "لم نجد هذا المقهى"
+}
