@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Image from "next/image";
 import type { Menu } from "@/lib/api";
+import { useCart } from "@/lib/cart";
 import { formatPrice, localized, t } from "@/lib/i18n";
+import CartBar from "./CartBar";
 import styles from "./menu.module.css";
 
 const PLACEHOLDER = "/menu/placeholder.svg";
@@ -11,6 +13,7 @@ const PLACEHOLDER = "/menu/placeholder.svg";
 export default function MenuView({ menu, table }: { menu: Menu; table: string | null }) {
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const cart = useCart(menu.cafe.slug);
 
   const cafeName = localized(menu.cafe.name_ar, menu.cafe.name_en);
   const q = query.trim().toLowerCase();
@@ -87,7 +90,7 @@ export default function MenuView({ menu, table }: { menu: Menu; table: string | 
                   {description && <p>{description}</p>}
                   <span className={styles.price}>{formatPrice(p.price)}</span>
                 </div>
-                <button className={styles.add} aria-label={t("menu.add", { name })}>
+                <button className={styles.add} aria-label={t("menu.add", { name })} onClick={() => cart.add(p)}>
                   +
                 </button>
               </article>
@@ -95,6 +98,8 @@ export default function MenuView({ menu, table }: { menu: Menu; table: string | 
           })}
         </section>
       ))}
+
+      <CartBar slug={menu.cafe.slug} table={table} />
     </main>
   );
 }
