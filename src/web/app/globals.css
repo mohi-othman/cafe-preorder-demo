@@ -1,0 +1,56 @@
+/* Design "Warm roastery" (spec, ticket 01 variant A). */
+:root {
+  --bg: #f7f0e6;
+  --card: #fffaf3;
+  --ink: #3b2a1e;
+  --muted: #8a7462;
+  --accent: #a0522d;
+  --line: #e6d8c6;
+  --soft: #efe2d0;
+  --font-body: var(--font-plex), system-ui, sans-serif;
+  --font-serif: var(--font-amiri), serif;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100dvh;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Set by the head script in layout.tsx until the saved language is rendered. */
+html[data-lang-pending] body {
+  visibility: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.serif {
+  font-family: var(--font-serif);
+  font-weight: 700;
+}
