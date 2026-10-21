@@ -1,0 +1,12 @@
+{
+  "app.name": "Qahwati",
+  "app.description": "Pre-order your coffee from your phone",
+  "common.loading": "Loading…",
+  "money.sar": "SAR {amount}",
+  "menu.search": "Search the menu…",
+  "menu.all": "All",
+  "menu.table": "Table {table}",
+  "menu.add": "Add {name}",
+  "menu.empty": "No matching products",
+  "cafe.notFound": "We couldn't find this café"
+}

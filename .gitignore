@@ -8,9 +8,15 @@ __pycache__/
 node_modules/
 .next/
 out/
+build/
+coverage/
+.vercel/
 *.tsbuildinfo
 next-env.d.ts
+npm-debug.log*
 
 # Env
 .env
-.env.local
+.env.*
+!.env.example
+*.pem
