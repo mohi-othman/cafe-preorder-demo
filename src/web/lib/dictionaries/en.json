@@ -8,5 +8,7 @@
   "menu.table": "Table {table}",
   "menu.add": "Add {name}",
   "menu.empty": "No matching products",
-  "cafe.notFound": "We couldn't find this café"
+  "cafe.notFound": "We couldn't find this café",
+  "lang.switch": "عربي",
+  "lang.switchLabel": "Switch to Arabic"
 }

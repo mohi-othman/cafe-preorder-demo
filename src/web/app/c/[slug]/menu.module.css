@@ -27,6 +27,10 @@
   font-size: 12px;
 }
 
+.lang {
+  margin-inline-start: auto;
+}
+
 .logo {
   width: 46px;
   height: 46px;

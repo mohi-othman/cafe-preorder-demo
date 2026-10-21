@@ -8,5 +8,7 @@
   "menu.table": "طاولة {table}",
   "menu.add": "أضف {name}",
   "menu.empty": "لا توجد منتجات مطابقة",
-  "cafe.notFound": "لم نجد هذا المقهى"
+  "cafe.notFound": "لم نجد هذا المقهى",
+  "lang.switch": "English",
+  "lang.switchLabel": "التبديل إلى الإنجليزية"
 }

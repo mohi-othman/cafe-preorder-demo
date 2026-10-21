@@ -32,6 +32,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Set by the head script in layout.tsx until the saved language is rendered. */
+html[data-lang-pending] body {
+  visibility: hidden;
+}
+
 button,
 input,
 select,
