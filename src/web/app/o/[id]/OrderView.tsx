@@ -1,14 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import LangToggle from "@/components/LangToggle";
-import type { Order } from "@/lib/api";
+import { getOrder, type Order } from "@/lib/api";
+import { useLiveSocket } from "@/lib/live";
 import { useLang } from "@/lib/useLang";
 import styles from "../../order.module.css";
 
-/** Tracking page body: Order Number, status, pickup and Order Lines. Live updates come in ticket 06. */
-export default function OrderView({ order }: { order: Order }) {
+/** Tracking page body: Order Number, status, pickup and Order Lines, kept live over the WebSocket. */
+export default function OrderView({ order: initial }: { order: Order }) {
   const { t, localized, formatPrice } = useLang();
+  const [order, setOrder] = useState(initial);
+  const [live, setLive] = useState(true);
+
+  useLiveSocket(`/api/ws/orders/${encodeURIComponent(initial.id)}`, {
+    onOpen: () => {
+      setLive(true);
+      // Catch up on anything missed while disconnected.
+      getOrder(initial.id).then((o) => o && setOrder(o), () => {});
+    },
+    onClose: () => setLive(false),
+    onEvent: (e) => setOrder(e.order),
+  });
   const pickup =
     order.pickup_type === "table"
       ? `🪑 ${t("menu.table", { table: order.table_number ?? "" })}`
@@ -35,6 +49,8 @@ export default function OrderView({ order }: { order: Order }) {
           {t(`order.status.${order.status}`)}
         </span>
       </section>
+
+      {!live && <p className={styles.hint}>{t("order.reconnecting")}</p>}
 
       {order.status === "awaiting_payment" ? (
         <Link className={styles.cta} href={`/o/${order.id}/pay`}>

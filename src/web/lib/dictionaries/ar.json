@@ -77,5 +77,8 @@
   "kds.group.ready": "جاهز للاستلام",
   "kds.action.pending": "قبول",
   "kds.action.preparing": "جاهز",
-  "kds.action.ready": "تم التسليم"
+  "kds.action.ready": "تم التسليم",
+  "kds.startShift": "ابدأ الوردية",
+  "kds.startShiftHint": "اضغط لتفعيل تنبيه الطلبات الجديدة",
+  "order.reconnecting": "جارٍ إعادة الاتصال للتحديث المباشر…"
 }

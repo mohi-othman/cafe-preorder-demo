@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import auth, kds, menu, orders
+from app import auth, kds, live, menu, orders
 from app.config import settings
 from app.db import create_schema
 
@@ -25,6 +25,7 @@ app.include_router(menu.router)
 app.include_router(orders.router)
 app.include_router(auth.router)
 app.include_router(kds.router)
+app.include_router(live.router)
 
 
 @app.get("/api/health")

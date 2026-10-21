@@ -77,5 +77,8 @@
   "kds.group.ready": "Ready for pickup",
   "kds.action.pending": "Accept",
   "kds.action.preparing": "Ready",
-  "kds.action.ready": "Complete"
+  "kds.action.ready": "Complete",
+  "kds.startShift": "Start shift",
+  "kds.startShiftHint": "Tap to turn on the new-order chime",
+  "order.reconnecting": "Reconnecting for live updates…"
 }

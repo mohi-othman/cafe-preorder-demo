@@ -2,10 +2,11 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from app import live
 from app.auth import require_barista
 from app.db import get_session
 from app.menu import CafeOut
@@ -37,6 +38,7 @@ def board(cafe: Cafe = Depends(require_barista), session: Session = Depends(get_
 def advance(
     public_id: UUID,
     body: AdvanceIn,
+    tasks: BackgroundTasks,
     cafe: Cafe = Depends(require_barista),
     session: Session = Depends(get_session),
 ):
@@ -52,4 +54,6 @@ def advance(
     session.add(order)
     session.commit()
     session.refresh(order)
-    return _out(session, order)
+    out = _out(session, order)
+    live.publish_after_response(tasks, live.STATUS_CHANGED, cafe.id, out)
+    return out
