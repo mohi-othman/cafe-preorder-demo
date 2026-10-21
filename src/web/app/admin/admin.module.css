@@ -401,3 +401,93 @@
     grid-template-columns: 1fr;
   }
 }
+
+.notice {
+  color: #1e6b3a;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.form small {
+  font-size: 12px;
+}
+
+.group {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.group legend {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+/* ---------- QR card ---------- */
+.form .tableInput {
+  width: 160px;
+}
+
+.qrCard {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.qrCafe {
+  font-size: 24px;
+}
+
+.qrFor {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.qrImage {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.qrScan {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.qrUrl {
+  font-size: 13px;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+/* Printing the QR page prints only the QR card; other admin pages print as they are. */
+@media print {
+  .shell:has(.qrCard) .side,
+  .shell:has(.qrCard) .head,
+  .shell:has(.qrCard) .form,
+  .shell:has(.qrCard) .error {
+    display: none;
+  }
+
+  .shell:has(.qrCard) .main {
+    padding: 0;
+  }
+
+  .qrCard {
+    border: 0;
+  }
+}
