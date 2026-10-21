@@ -269,6 +269,42 @@
   border: 1px solid var(--line);
 }
 
+/* ---------- start shift (a tap unlocks audio) ---------- */
+.start {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 16px;
+  background: var(--ink);
+  color: var(--bg);
+  text-align: center;
+}
+
+.startButton {
+  border: 0;
+  border-radius: 24px;
+  padding: 32px 56px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 32px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ---------- new Order flash ---------- */
+.flash {
+  animation: flash 0.8s ease-in-out 3;
+}
+
+@keyframes flash {
+  50% {
+    box-shadow: inset 0 0 0 4px var(--accent), 0 0 0 4px var(--accent);
+  }
+}
+
 /* Narrow screens: stack the focus card above the queue. */
 @media (max-width: 760px) {
   .kds {

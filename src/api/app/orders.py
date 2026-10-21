@@ -2,10 +2,11 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 from sqlmodel import Session, select
 
+from app import live
 from app.db import get_session
 from app.menu import CafeOut
 from app.models import Cafe, Order, OrderLine, Product
@@ -135,6 +136,7 @@ def create_order(slug: str, body: OrderIn, session: Session = Depends(get_sessio
 def pay_order(
     public_id: UUID,
     body: PaymentIn,
+    tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     provider: PaymentProvider = Depends(get_payment_provider),
 ):
@@ -148,7 +150,9 @@ def pay_order(
         mark_paid(session, order, now=datetime.now(timezone.utc))
     except InvalidTransition:  # paid by a concurrent request
         raise HTTPException(status_code=409, detail="Order is already paid")
-    return _out(session, order)
+    out = _out(session, order)
+    live.publish_after_response(tasks, live.ORDER_CREATED, order.cafe_id, out)
+    return out
 
 
 @router.get("/orders/{public_id}", response_model=OrderOut)
