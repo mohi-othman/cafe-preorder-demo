@@ -2,21 +2,33 @@
 
 import { useCallback, useEffect, useState } from "react";
 import LangToggle from "@/components/LangToggle";
-import { advanceOrder, AuthError, getBoard, type Board, type KdsOrder, type KdsStatus } from "@/lib/api";
+import {
+  advanceOrder,
+  AuthError,
+  getBoard,
+  type Board,
+  type KdsOrder,
+  type KdsStatus,
+  type Order,
+} from "@/lib/api";
 import { setKdsToken } from "@/lib/kdsToken";
+import { type LiveEvent, useLiveSocket } from "@/lib/live";
 import { useLang } from "@/lib/useLang";
+import { playChime, unlockAudio } from "./chime";
 import styles from "./kds.module.css";
 
 const STATUSES: KdsStatus[] = ["pending", "preparing", "ready"];
-const POLL_MS = 4000; // ticket 06 replaces polling with the WebSocket
+const FLASH_MS = 2500;
 
 /** The KDS board: oldest new Order in focus on the start side, the queue on the end side. */
 export default function KdsBoard({ token }: { token: string }) {
   const { lang, t, localized } = useLang();
+  const [started, setStarted] = useState(false);
   const [board, setBoard] = useState<Board | null>(null);
   const [offline, setOffline] = useState(false);
   const [notice, setNotice] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [flashing, setFlashing] = useState<ReadonlySet<string>>(new Set());
   const now = useNow();
 
   /** The one place the board is fetched. */
@@ -30,14 +42,49 @@ export default function KdsBoard({ token }: { token: string }) {
     }
   }, [token]);
 
-  useEffect(() => {
-    const id = setInterval(loadBoard, POLL_MS);
-    const first = setTimeout(loadBoard, 0);
-    return () => {
-      clearInterval(id);
-      clearTimeout(first);
-    };
-  }, [loadBoard]);
+  function flash(id: string) {
+    setFlashing((s) => new Set(s).add(id));
+    setTimeout(
+      () =>
+        setFlashing((s) => {
+          const next = new Set(s);
+          next.delete(id);
+          return next;
+        }),
+      FLASH_MS,
+    );
+  }
+
+  // Live updates once the shift has started; every (re)connect reloads the board.
+  useLiveSocket(started ? `/api/ws/kds?token=${encodeURIComponent(token)}` : null, {
+    onOpen: loadBoard,
+    // A drop: the reload logs out on a bad token, or shows the banner until the socket is back.
+    onClose: () => void loadBoard().then(() => setOffline(true)),
+    onEvent: ({ type, order }: LiveEvent) => {
+      setBoard((b) => b && { ...b, orders: withOrder(b.orders, order) });
+      if (type === "order_created") {
+        playChime();
+        flash(order.id);
+      }
+    },
+  });
+
+  function startShift() {
+    unlockAudio();
+    setStarted(true);
+  }
+
+  if (!started) {
+    return (
+      <main className={styles.start}>
+        <LangToggle />
+        <button className={styles.startButton} onClick={startShift}>
+          {t("kds.startShift")}
+        </button>
+        <p>{t("kds.startShiftHint")}</p>
+      </main>
+    );
+  }
 
   async function advance(order: KdsOrder) {
     setBusy(order.id);
@@ -96,7 +143,10 @@ export default function KdsBoard({ token }: { token: string }) {
         <p className={styles.empty}>{t("common.loading")}</p>
       ) : (
         <div className={styles.split}>
-          <section className={styles.now} aria-label={t("kds.focus")}>
+          <section
+            className={`${styles.now} ${focus && flashing.has(focus.id) ? styles.flash : ""}`}
+            aria-label={t("kds.focus")}
+          >
             {focus ? (
               <>
                 <span className={styles.tag}>● {t("kds.newOrder", { ago: ago(focus) })}</span>
@@ -129,7 +179,7 @@ export default function KdsBoard({ token }: { token: string }) {
                   <h2>{t(`kds.group.${s}`)}</h2>
                   {group.length === 0 && <p className={styles.none}>—</p>}
                   {group.map((o) => (
-                    <div key={o.id} className={styles.row}>
+                    <div key={o.id} className={`${styles.row} ${flashing.has(o.id) ? styles.flash : ""}`}>
                       <span className={`serif ${styles.number}`}>#{o.order_number}</span>
                       <div className={styles.text}>
                         {o.lines.map((l, i) => (
@@ -161,6 +211,13 @@ export default function KdsBoard({ token }: { token: string }) {
       )}
     </main>
   );
+}
+
+/** The board's Orders with `order` added, replaced, or removed once it has left the board; oldest paid first. */
+function withOrder(orders: KdsOrder[], order: Order): KdsOrder[] {
+  const rest = orders.filter((o) => o.id !== order.id);
+  if (!STATUSES.includes(order.status as KdsStatus)) return rest;
+  return [...rest, order as KdsOrder].sort((a, b) => (a.paid_at ?? "").localeCompare(b.paid_at ?? ""));
 }
 
 /** Current time in ms, refreshed every 15 seconds for the clock and "minutes ago". */

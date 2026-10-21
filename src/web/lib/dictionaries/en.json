@@ -131,5 +131,8 @@
   "admin.delete": "Delete",
   "admin.confirmDeleteProduct": "Delete “{name}”?",
   "admin.productOnOrders": "This product is on past orders, so it can't be deleted. Mark it unavailable instead.",
-  "admin.invalid": "Check the fields: the Arabic name is required and the price is a number like 18.50."
+  "admin.invalid": "Check the fields: the Arabic name is required and the price is a number like 18.50.",
+  "kds.startShift": "Start shift",
+  "kds.startShiftHint": "Tap to turn on the new-order chime",
+  "order.reconnecting": "Reconnecting for live updates…"
 }
