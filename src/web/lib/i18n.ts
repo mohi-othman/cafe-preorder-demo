@@ -4,6 +4,9 @@ import en from "./dictionaries/en.json";
 export type Lang = "ar" | "en";
 export type Key = keyof typeof ar;
 
+/** localStorage key holding the chosen language. */
+export const LANG_STORAGE_KEY = "lang";
+
 const dictionaries: Record<Lang, Record<Key, string>> = { ar, en };
 
 /** Look up a UI string and fill `{name}` placeholders. Arabic is the default. */
