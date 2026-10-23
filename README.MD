@@ -293,11 +293,11 @@ Repository → **Settings → Secrets and variables → Actions**, or with the G
 ```powershell
 gh secret set VPS_HOST --body "<server ip>"
 Get-Content -Raw $HOME\.ssh\qahwati_deploy | gh secret set VPS_SSH_KEY
-ssh-keyscan <server ip> | gh secret set VPS_KNOWN_HOSTS
+gh secret set VPS_KNOWN_HOSTS --body ((ssh-keygen -F <server ip> | Where-Object { $_ -notmatch '^#' }) -join "`n")
 gh variable set PUBLIC_URL --body "http://<server ip>"
 ```
 
-`ssh-keyscan` trusts whatever answers. Run it right after you have logged in once in step 2, and compare a fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server if you want to be sure.
+`VPS_KNOWN_HOSTS` copies the host keys your computer saved when you first logged in (step 2), so run it after that login. Piping `ssh-keyscan` straight into `gh secret set` in PowerShell can save a value that fails with "Host key verification failed".
 
 ### 4. Deploy
 
