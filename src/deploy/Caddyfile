@@ -1,0 +1,15 @@
+# Plain HTTP on the server's IP. With a domain, replace ":80" with the domain name (for example
+# demo.example.com) and Caddy gets an HTTPS certificate by itself; then set PUBLIC_URL to https://<domain>.
+:80 {
+	encode zstd gzip
+
+	# API: REST and WebSockets (the WebSocket upgrade is proxied automatically)
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Everything else: the Next.js app
+	handle {
+		reverse_proxy web:3000
+	}
+}

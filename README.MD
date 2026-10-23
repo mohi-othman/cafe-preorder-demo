@@ -9,8 +9,10 @@ src/
   api/                 FastAPI app (Python)
   web/                 Next.js app (TypeScript)
   tests/               pytest tests for the API
+  deploy/              production stack for one VPS (compose, Caddyfile, cloud-init)
   docker-compose.yml   local Postgres
   .env.example         every setting, with placeholder values
+.github/workflows/     test, build and deploy to the VPS
 ```
 
 ## Run locally on Windows
@@ -138,6 +140,7 @@ docker compose -f src/docker-compose.yml up -d
 | `ADMIN_PASSWORD` | seed only | Password the seed gives the `admin` login. | a strong password |
 | `BARISTA_PASSWORD` | seed only | Password the seed gives the `barista` login (Demo Roasters). | a strong password |
 | `NEXT_PUBLIC_API_URL` | web | Public base URL of the API, no trailing slash. The WebSocket URL is derived from it (`http` → `ws`, `https` → `wss`). Built into the browser bundle, so it must be set **before** `npm run build`. Default `http://localhost:8000`. | `https://qahwati-api.onrender.com` |
+| `API_INTERNAL_URL` | web (server only) | Optional private API address for server-side fetches; the browser still uses `NEXT_PUBLIC_API_URL`. Read at run time. | `http://api:8000` |
 
 Locally the API reads `src\api\.env`; real environment variables override it. The web app reads `src\web\.env.local`. In hosting, set them in the provider's dashboard; no `.env` file is deployed.
 
@@ -242,6 +245,89 @@ QR codes use the address the admin page is open on. Open Admin → QR codes on t
 | Vercel project | `NEXT_PUBLIC_API_URL` |
 
 Generate new secrets and passwords for each environment, and never commit them. `src/.env.example` holds placeholders only, apart from the local Docker database password.
+
+## Deploy to a VPS with GitHub Actions
+
+An alternative to Render and Vercel: everything on one small Ubuntu 24.04 server (1 vCPU / 1 GB RAM is enough), deployed by [.github/workflows/deploy.yml](.github/workflows/deploy.yml) on every push to `main`, or by hand with **Actions → Deploy → Run workflow**.
+
+```
+push to main → tests + lint → build api and web images → push to ghcr.io → ssh to the VPS → docker compose pull + up → health check
+```
+
+On the server, [src/deploy/docker-compose.yml](src/deploy/docker-compose.yml) runs Postgres, the API (one process), the web app and Caddy in `/opt/qahwati`. Only Caddy is reachable from outside: `/api/*` (REST and WebSockets) goes to the API, everything else to the web app. Images are built on GitHub, so the server never runs `npm run build`.
+
+### 1. Make two SSH keys
+
+In PowerShell on your computer, skipping the first command if you already have a personal key:
+
+```powershell
+ssh-keygen -t ed25519 -f $HOME\.ssh\id_ed25519
+ssh-keygen -t ed25519 -C qahwati-deploy -f $HOME\.ssh\qahwati_deploy
+```
+
+Press Enter at the deploy key's passphrase prompts: it has no passphrase because GitHub Actions uses it unattended. Keep it only in GitHub secrets (step 3) and delete the local copy afterwards if you like.
+
+### 2. Create the server
+
+1. Copy [src/deploy/cloud-init.yaml](src/deploy/cloud-init.yaml) and replace the two `REPLACE-WITH-…` lines with the contents of `id_ed25519.pub` and `qahwati_deploy.pub`.
+2. Create an Ubuntu 24.04 server. Under **Cloud-Init User-Data** (on Vultr: Additional Features → Cloud-Init User-Data), paste the edited file.
+3. Wait about 3 minutes after it boots, then log in as `ssh deploy@<server ip>`. `cloud-init status` should say `done`. Root and password logins are off.
+
+cloud-init sets up the firewall (22, 80, 443), 2 GB swap, Docker, automatic security updates, and `/opt/qahwati/db.env` and `/opt/qahwati/api.env` with newly generated database password, `JWT_SECRET`, `ADMIN_PASSWORD` and `BARISTA_PASSWORD`. Read the logins once and keep them in your password manager:
+
+```powershell
+ssh deploy@<server ip> cat /opt/qahwati/api.env
+```
+
+### 3. Add the GitHub settings
+
+Repository → **Settings → Secrets and variables → Actions**, or with the GitHub CLI from the repository folder:
+
+| Name | Kind | Value |
+|---|---|---|
+| `VPS_HOST` | secret | the server's IP |
+| `VPS_SSH_KEY` | secret | the private deploy key (`qahwati_deploy`, not `.pub`) |
+| `VPS_KNOWN_HOSTS` | secret | the server's host keys, so the workflow refuses an impostor server |
+| `PUBLIC_URL` | variable | the address people open, no trailing slash, for example `http://203.0.113.10` |
+
+```powershell
+gh secret set VPS_HOST --body "<server ip>"
+Get-Content -Raw $HOME\.ssh\qahwati_deploy | gh secret set VPS_SSH_KEY
+ssh-keyscan <server ip> | gh secret set VPS_KNOWN_HOSTS
+gh variable set PUBLIC_URL --body "http://<server ip>"
+```
+
+`ssh-keyscan` trusts whatever answers. Run it right after you have logged in once in step 2, and compare a fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server if you want to be sure.
+
+### 4. Deploy
+
+Push to `main`, or run the workflow by hand. The first deploy also seeds the database (Demo Roasters and the two logins) and leaves `/opt/qahwati/.seeded` so later deploys don't reset admin edits. Then check the same things as in [6. Check](#6-check) on `PUBLIC_URL`.
+
+**Roll back:** open an earlier successful run of the workflow and choose **Re-run all jobs**. Each run deploys the images tagged with its own commit. Images older than a week that are not in use are deleted from the server.
+
+**Schema changes:** there are no migrations. After a deploy that changes the models, reset the database on the server (this deletes all data):
+
+```powershell
+ssh deploy@<server ip> "cd /opt/qahwati && docker compose down && docker volume rm qahwati_pgdata && rm .seeded"
+```
+
+Then run the workflow again.
+
+**Logs:** `ssh deploy@<server ip> "cd /opt/qahwati && docker compose logs -f api"` (or `web`, `caddy`, `db`).
+
+### Adding a domain and HTTPS later
+
+Point an `A` record at the server, replace `:80` with the domain in [src/deploy/Caddyfile](src/deploy/Caddyfile), set `PUBLIC_URL` to `https://<domain>` and push. Caddy gets the certificate by itself. `PUBLIC_URL` is built into the web image, so changing it always needs a new run of the workflow.
+
+### Adding keys to a new VPS (summary)
+
+| Where | What |
+|---|---|
+| Server, `/opt/qahwati/db.env` and `api.env` | generated by cloud-init; never in git or GitHub |
+| GitHub secrets | `VPS_HOST`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS` |
+| GitHub variable | `PUBLIC_URL` |
+
+The workflow logs in to `ghcr.io` with its own short-lived `GITHUB_TOKEN`, so there is no registry password to manage.
 
 ## Limits
 

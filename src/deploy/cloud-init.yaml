@@ -1,0 +1,46 @@
+#cloud-config
+# One-time setup for an Ubuntu 24.04 VPS. Paste into the provider's "Cloud-Init User-Data" box when creating
+# the server, after replacing the two keys below. It runs once, on first boot. See README, "Deploy to a VPS".
+#
+# Result: user "deploy" (SSH keys only, sudo, docker), password and root login off, firewall allowing
+# 22/80/443, 2 GB swap, Docker with Compose, automatic security updates, and /opt/qahwati with
+# freshly generated secrets in db.env and api.env (readable by deploy only).
+
+users:
+  - name: deploy
+    groups: [sudo, docker]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - REPLACE-WITH-YOUR-PERSONAL-PUBLIC-KEY      # for you: ssh deploy@<server ip>
+      - REPLACE-WITH-THE-DEPLOY-PUBLIC-KEY         # for GitHub Actions (private half is the VPS_SSH_KEY secret)
+
+disable_root: true
+ssh_pwauth: false
+
+swap:
+  filename: /swapfile
+  size: 2G
+
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - ufw
+  - unattended-upgrades
+
+runcmd:
+  - ufw allow OpenSSH
+  - ufw allow 80,443/tcp
+  - ufw --force enable
+  - systemctl enable --now docker
+  - mkdir -p /opt/qahwati
+  - |
+    cd /opt/qahwati
+    umask 077
+    db_pass=$(openssl rand -hex 24)
+    printf 'POSTGRES_USER=qahwati\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=cafe\n' "$db_pass" > db.env
+    printf 'DATABASE_URL=postgresql+psycopg://qahwati:%s@db:5432/cafe\nJWT_SECRET=%s\nADMIN_PASSWORD=%s\nBARISTA_PASSWORD=%s\n' \
+      "$db_pass" "$(openssl rand -hex 32)" "$(openssl rand -hex 12)" "$(openssl rand -hex 8)" > api.env
+    chown -R deploy:deploy /opt/qahwati

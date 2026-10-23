@@ -1,0 +1,53 @@
+# Production stack for one VPS. The deploy workflow copies this file and the Caddyfile to /opt/qahwati.
+# Values in ${...} come from /opt/qahwati/.env (written by each deploy); secrets come from db.env and
+# api.env (written once by cloud-init.yaml). Only Caddy publishes ports; Postgres and the API stay private.
+name: qahwati
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    env_file: db.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  api:
+    image: ${API_IMAGE}
+    restart: unless-stopped
+    env_file: api.env
+    environment:
+      WEB_ORIGIN: ${PUBLIC_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

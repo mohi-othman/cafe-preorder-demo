@@ -1,4 +1,9 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// On the server, API_INTERNAL_URL (if set) is a private address such as http://api:8000 inside Docker.
+// The browser always uses NEXT_PUBLIC_API_URL.
+export const API_URL =
+  (typeof window === "undefined" ? process.env.API_INTERNAL_URL : undefined) ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000";
 
 export type Product = {
   id: number;

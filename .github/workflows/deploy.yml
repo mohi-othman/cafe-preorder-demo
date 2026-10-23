@@ -1,0 +1,114 @@
+# Test, build the API and web images, push them to GHCR, and deploy them to the VPS.
+# Setup (secrets, variable, server): README, "Deploy to a VPS with GitHub Actions".
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qahwati
+          POSTGRES_PASSWORD: qahwati
+          POSTGRES_DB: cafe
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://qahwati:qahwati@localhost:5432/cafe_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/api/requirements*.txt
+      - run: pip install -r src/api/requirements-dev.txt
+      - run: python -m pytest
+        working-directory: src
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+      - run: npm ci && npm run lint
+        working-directory: src/web
+
+  build:
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        app: [api, web]
+    steps:
+      - name: Check settings
+        if: vars.PUBLIC_URL == ''
+        run: echo "::error::Set the repository variable PUBLIC_URL (for example http://203.0.113.10)" && exit 1
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: src/${{ matrix.app }}
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ github.sha }}
+          build-args: NEXT_PUBLIC_API_URL=${{ vars.PUBLIC_URL }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    env:
+      HOST: deploy@${{ secrets.VPS_HOST }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Copy stack files
+        run: scp src/deploy/docker-compose.yml src/deploy/Caddyfile "$HOST:/opt/qahwati/"
+      - name: Pull and restart
+        run: |
+          ssh "$HOST" 'bash -s' <<EOF
+          set -euo pipefail
+          cd /opt/qahwati
+          printf 'API_IMAGE=%s\nWEB_IMAGE=%s\nPUBLIC_URL=%s\n' \
+            '${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}' '${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}' '${{ vars.PUBLIC_URL }}' > .env
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          docker compose pull
+          docker logout ghcr.io
+          docker compose up -d --remove-orphans
+          for i in \$(seq 1 30); do curl -fsS http://localhost/api/health && break; sleep 2; done
+          curl -fsS http://localhost/api/health
+          # Seed once per server: a re-run resets the logins and the seeded Products.
+          if [ ! -f .seeded ]; then docker compose exec -T api python -m app.seed && touch .seeded; fi
+          docker image prune -af --filter until=168h
+          EOF
