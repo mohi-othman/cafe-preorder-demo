@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Amiri, IBM_Plex_Sans_Arabic } from "next/font/google";
 import LangSync from "@/components/LangSync";
-import { LANG_STORAGE_KEY, t } from "@/lib/i18n";
+import { LANG_STORAGE_KEY, STAFF_LANG_STORAGE_KEY, STAFF_PATH, t } from "@/lib/i18n";
 import "./globals.css";
 
 const plex = IBM_Plex_Sans_Arabic({
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 
 // Runs before first paint: apply the saved English choice to <html> and hide the
 // body until React renders English text (LangSync reveals it; 3s safety net).
-const LANG_SCRIPT = `(function(){try{if(localStorage.getItem(${JSON.stringify(LANG_STORAGE_KEY)})!=="en")return;var h=document.documentElement;h.lang="en";h.dir="ltr";h.dataset.langPending="";setTimeout(function(){delete h.dataset.langPending},3000)}catch(e){}})()`;
+const LANG_SCRIPT = `(function(){try{var k=${STAFF_PATH}.test(location.pathname)?${JSON.stringify(STAFF_LANG_STORAGE_KEY)}:${JSON.stringify(LANG_STORAGE_KEY)};if(localStorage.getItem(k)!=="en")return;var h=document.documentElement;h.lang="en";h.dir="ltr";h.dataset.langPending="";setTimeout(function(){delete h.dataset.langPending},3000)}catch(e){}})()`;
 
 export const viewport: Viewport = {
   themeColor: "#f7f0e6",

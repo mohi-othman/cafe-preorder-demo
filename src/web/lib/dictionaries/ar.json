@@ -49,7 +49,7 @@
   "order.number": "رقم الطلب",
   "order.thanks": "شكراً {name}! احفظ هذه الصفحة لمتابعة طلبك.",
   "order.pay": "إكمال الدفع",
-  "order.more": "اطلب المزيد",
+  "order.more": "طلب جديد",
   "order.notFound": "لم نجد هذا الطلب",
   "order.status.awaiting_payment": "بانتظار الدفع",
   "order.status.pending": "تم استلام الطلب",

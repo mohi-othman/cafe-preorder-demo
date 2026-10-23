@@ -1,16 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import LangToggle from "@/components/LangToggle";
 import { getOrder, type Order } from "@/lib/api";
+import { clearCart } from "@/lib/cart";
 import { useLiveSocket } from "@/lib/live";
 import { useLang } from "@/lib/useLang";
 import styles from "../../order.module.css";
 
 /** Tracking page body: Order Number, status, pickup and Order Lines, kept live over the WebSocket. */
 export default function OrderView({ order: initial }: { order: Order }) {
-  const { t, localized, formatPrice } = useLang();
+  const { t, localized, formatPrice, setLang } = useLang();
+  const router = useRouter();
   const [order, setOrder] = useState(initial);
   const [live, setLive] = useState(true);
 
@@ -30,6 +33,13 @@ export default function OrderView({ order: initial }: { order: Order }) {
   const menuHref =
     `/c/${encodeURIComponent(order.cafe.slug)}` +
     (order.table_number ? `?table=${encodeURIComponent(order.table_number)}` : "");
+
+  // Hand the device to the next customer: empty cart, default language, fresh menu.
+  function newOrder() {
+    clearCart(order.cafe.slug);
+    setLang("ar");
+    router.push(menuHref);
+  }
 
   return (
     <main className={styles.page}>
@@ -57,7 +67,12 @@ export default function OrderView({ order: initial }: { order: Order }) {
           {t("order.pay")}
         </Link>
       ) : (
-        <p className={styles.hint}>{t("order.thanks", { name: order.customer_name })}</p>
+        <>
+          <p className={styles.hint}>{t("order.thanks", { name: order.customer_name })}</p>
+          <button className={styles.cta} type="button" onClick={newOrder}>
+            {t("order.more")}
+          </button>
+        </>
       )}
 
       <section className={styles.box}>
@@ -85,10 +100,6 @@ export default function OrderView({ order: initial }: { order: Order }) {
         <span>{formatPrice(order.total)}</span>
       </div>
       <p className={styles.hint}>{t("checkout.vat")}</p>
-
-      <Link className={styles.link} href={menuHref}>
-        {t("order.more")}
-      </Link>
     </main>
   );
 }

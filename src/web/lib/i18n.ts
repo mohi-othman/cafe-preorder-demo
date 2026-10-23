@@ -4,8 +4,14 @@ import en from "./dictionaries/en.json";
 export type Lang = "ar" | "en";
 export type Key = keyof typeof ar;
 
-/** localStorage key holding the chosen language. */
+/** localStorage key holding the chosen language. Staff pages keep their own, apart from customers. */
 export const LANG_STORAGE_KEY = "lang";
+export const STAFF_LANG_STORAGE_KEY = "lang.staff";
+export const STAFF_PATH = /^\/(kds|admin)(\/|$)/;
+
+export function langStorageKey(pathname: string): string {
+  return STAFF_PATH.test(pathname) ? STAFF_LANG_STORAGE_KEY : LANG_STORAGE_KEY;
+}
 
 const dictionaries: Record<Lang, Record<Key, string>> = { ar, en };
 

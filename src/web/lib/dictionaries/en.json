@@ -49,7 +49,7 @@
   "order.number": "Order number",
   "order.thanks": "Thanks, {name}! Keep this page to follow your order.",
   "order.pay": "Complete payment",
-  "order.more": "Order more",
+  "order.more": "New order",
   "order.notFound": "We couldn't find this order",
   "order.status.awaiting_payment": "Awaiting payment",
   "order.status.pending": "Order received",

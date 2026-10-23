@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import { formatPrice, LANG_STORAGE_KEY, localized, t, type Key, type Lang } from "./i18n";
+import { formatPrice, langStorageKey, localized, t, type Key, type Lang } from "./i18n";
 
 const CHANGE_EVENT = "langchange";
 let fallback: Lang = "ar"; // used when localStorage is blocked
@@ -9,7 +9,7 @@ let fallback: Lang = "ar"; // used when localStorage is blocked
 /** Saved choice; Arabic when nothing is stored. */
 export function readStoredLang(): Lang {
   try {
-    return localStorage.getItem(LANG_STORAGE_KEY) === "en" ? "en" : "ar";
+    return localStorage.getItem(langStorageKey(location.pathname)) === "en" ? "en" : "ar";
   } catch {
     return fallback;
   }
@@ -31,10 +31,10 @@ function subscribe(onChange: () => void) {
   };
 }
 
-function setLang(lang: Lang) {
+export function setLang(lang: Lang) {
   fallback = lang;
   try {
-    localStorage.setItem(LANG_STORAGE_KEY, lang);
+    localStorage.setItem(langStorageKey(location.pathname), lang);
   } catch {
     // Storage blocked: the switch still works until reload.
   }
